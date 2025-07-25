@@ -1,0 +1,5 @@
+[functions.parse-receipt]
+enabled = true
+verify_jwt = true
+entrypoint = "functions/parse-receipt/index.ts"
+import_map = "functions/parse-receipt/deno.json"
