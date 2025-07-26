@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react';
-import { supabase } from '../../lib/supabase-client.ts';
+import { supabase } from '../../lib/supabase-client';
 import { CloudUpload } from 'lucide-react';
 
 type FileType = 'sales' | 'bank' | 'receipt';
