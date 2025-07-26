@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import TaxReturnTrigger from '../../../components/TaxReturnTrigger.tsx'
-import DownloadDenverReturn from '../../../components/DownloadDenverReturn.tsx'
+import TaxReturnTrigger from '../../../components/TaxReturnTrigger'
+import DownloadDenverReturn from '../../../components/DownloadDenverReturn'
 import { FileTextIcon, AlertCircle, DollarSign, Clock, FileMinus } from 'lucide-react'
 
 type Reconciliation = {
