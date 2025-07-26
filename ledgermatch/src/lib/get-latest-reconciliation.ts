@@ -1,6 +1,6 @@
 // lib/get-latest-reconciliation.ts
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { Database } from '../lib/types/supabase.ts' // adjust path
+import { Database } from '../lib/types/supabase' // adjust path
 
 export async function getLatestReconciliation() {
   const supabase = createClientComponentClient<Database>()
