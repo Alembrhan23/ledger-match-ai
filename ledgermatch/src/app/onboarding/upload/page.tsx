@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { supabase } from '../../../lib/supabase-client.ts';
+import { useRouter } from 'next/navigation';
+const router = useRouter(); // ✅ this was missing!
 
 type FileType = 'sales' | 'bank' | 'receipt';
 const bucket = 'files';
