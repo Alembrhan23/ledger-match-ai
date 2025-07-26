@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import MatchingFlow from '../components/MatchingFlow.tsx';
+import MatchingFlow from '../components/MatchingFlow';
 
 export default function HomePage() {
   const [dragging, setDragging] = useState(false);
