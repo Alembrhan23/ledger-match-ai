@@ -1,15 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-// import { supabase } from '../../../lib/supabase-client';
-import { supabase } from '../../../lib/supabase-client.ts';
+// import { supabase } from '../../../@lib/supabase-client';
+import { supabase } from '@/lib/supabase-client';
 import { useRouter } from 'next/navigation';
-const router = useRouter(); // ✅ this was missing!
+
 
 type FileType = 'sales' | 'bank' | 'receipt';
 const bucket = 'files';
 
 export default function OnboardingUploadPage() {
+    const router = useRouter(); // ✅ this was missing!
   const [files, setFiles] = useState<Record<FileType, File | null>>({
     sales: null,
     bank: null,
