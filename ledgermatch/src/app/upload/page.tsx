@@ -20,120 +20,122 @@ export default function UploadPage() {
     }
   };
 
-  const handleUpload = async () => {
-    setMessage(null);
-    setStatus(null);
+ const handleUpload = async () => {
+  setMessage(null);
+  setStatus(null);
 
-    if (!file) {
-      setMessage('❗ Please select a file to upload.');
+  if (!file) {
+    setMessage('❗ Please select a file to upload.');
+    setStatus('error');
+    return;
+  }
+
+  setIsUploading(true);
+
+  try {
+    // ✅ 1. Get User
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setMessage('❌ You must be logged in to upload files.');
       setStatus('error');
+      setIsUploading(false);
       return;
     }
 
-    setIsUploading(true);
+    const userId = user.id;
 
-    try {
-      // ✅ 1. Get User
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+    // ✅ 2. Upload to Supabase Storage
+    const path = `${fileType}/${userId}/${Date.now()}-${file.name}`;
 
-      if (userError || !user) {
-        setMessage('❌ You must be logged in to upload files.');
-        setStatus('error');
-        setIsUploading(false); // Stop loading
-        return;
-      }
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
 
-      const userId = user.id;
+    if (uploadError || !uploadData) {
+      throw new Error(uploadError?.message || 'Upload failed');
+    }
 
-      // ✅ 2. Upload to Supabase Storage
-      const path = `${fileType}/${userId}/${Date.now()}-${file.name}`;
+    const uploadedFilePath = uploadData.path;
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+    // ✅ 3. Record metadata in DB
+    const tableMap: Record<FileType, string> = {
+      sales: 'sales_reports',
+      bank: 'bank_statements',
+      receipt: 'receipts',
+    };
+
+    const { data: dbInsertData, error: dbInsertError } = await supabase
+      .from(tableMap[fileType])
+      .insert({
+        user_id: userId,
+        file_url: uploadedFilePath,
+        uploaded_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (dbInsertError || !dbInsertData) {
+      throw new Error(dbInsertError?.message || 'Failed to record metadata.');
+    }
+
+    // ✅ 4. Create Signed URL
+    if (['receipt', 'bank', 'sales'].includes(fileType)) {
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
         .from(bucket)
-        .upload(path, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+        .createSignedUrl(uploadedFilePath, 60 * 5); // 5 minutes
 
-      if (uploadError || !uploadData) {
-        throw new Error(uploadError?.message || 'Upload failed');
+      if (signedUrlError || !signedUrlData?.signedUrl) {
+        throw new Error('❌ Failed to generate signed URL for Mindee');
       }
 
-      const uploadedFilePath = uploadData.path;
+      const publicFileUrl = signedUrlData.signedUrl;
 
-      // ✅ 3. Record metadata in DB
-      const tableMap: Record<FileType, string> = {
-        sales: 'sales_reports',
-        bank: 'bank_statements',
-        receipt: 'receipts',
+      // ✅ 5. Choose correct API route
+      const apiRoutes: Record<FileType, string> = {
+        receipt: '/api/parse-receipt',
+        bank: '/api/parse-bank-statement',
+        sales: '/api/parse-sales-report',
       };
 
-      // Ensure the table column for file_url is VARCHAR or TEXT to store the path
-      const { data: dbInsertData, error: dbInsertError } = await supabase
-        .from(tableMap[fileType])
-        .insert({
-          user_id: userId,
-          file_url: uploadedFilePath, // Storing the path, not the full URL yet
-          uploaded_at: new Date().toISOString(),
-        })
-        .select('id') // Select the ID of the newly inserted record
-        .single(); // Get a single record
+      const requestBody = {
+        fileUrl: publicFileUrl,
+        receiptId: fileType === 'receipt' ? dbInsertData.id : undefined,
+        bankStatementId: fileType === 'bank' ? dbInsertData.id : undefined,
+        salesReportId: fileType === 'sales' ? dbInsertData.id : undefined,
+      };
 
-      if (dbInsertError || !dbInsertData) {
-        throw new Error(dbInsertError?.message || 'Failed to record metadata.');
+      const parseResponse = await fetch(apiRoutes[fileType], {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!parseResponse.ok) {
+        const errorData = await parseResponse.json();
+        throw new Error(errorData.error || 'Failed to parse document via API route');
       }
 
-      const receiptId = dbInsertData.id; // Get the ID of the new receipt record
-
-      // ✅ 4. Trigger Mindee API parsing (only for receipts)
-      if (fileType === 'receipt') {
-        // Get the signed URL for Mindee (valid for 5 minutes)
-        const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-          .from(bucket)
-          .createSignedUrl(uploadedFilePath, 60 * 5); // 5 minutes
-
-        if (signedUrlError || !signedUrlData?.signedUrl) {
-          throw new Error('❌ Failed to generate signed URL for Mindee');
-        }
-
-        const publicFileUrl = signedUrlData.signedUrl; // This is the URL to send to Mindee and your API route
-
-        // Call your Next.js API route to handle Mindee parsing
-        // This sends the signed URL and the receiptId to your backend
-        const parseResponse = await fetch('/api/parse-receipt', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ fileUrl: publicFileUrl, receiptId }), // Sending a JSON object
-        });
-
-        if (!parseResponse.ok) {
-          const errorData = await parseResponse.json();
-          throw new Error(errorData.error || 'Failed to parse receipt via API route');
-        }
-
-        const parseResult = await parseResponse.json();
-        setMessage('✅ Receipt parsed successfully!');
-        setStatus('success');
-        console.log('Mindee Parsing Result:', parseResult); // Log the result from your API route
-      } else {
-        setMessage('✅ File uploaded and metadata recorded successfully!');
-        setStatus('success');
-      }
-
-    } catch (error: any) {
-      console.error('Upload Error:', error);
-      setMessage(`❌ Upload failed: ${error.message}`);
-      setStatus('error');
-    } finally {
-      setIsUploading(false);
-      setFile(null); // Clear the selected file
+      // ✅ 6. Success Message
+      const label = fileType === 'sales' ? 'Sales report' : fileType === 'bank' ? 'Bank statement' : 'Receipt';
+      setMessage(`✅ ${label} parsed successfully!`);
+      setStatus('success');
     }
-  };
+  } catch (error: any) {
+    console.error('Upload Error:', error);
+    setMessage(`❌ Upload failed: ${error.message}`);
+    setStatus('error');
+  } finally {
+    setIsUploading(false);
+    setFile(null);
+  }
+};
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
