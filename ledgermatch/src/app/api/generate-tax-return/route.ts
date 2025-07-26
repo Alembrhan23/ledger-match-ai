@@ -1,5 +1,5 @@
 // /app/api/generate-tax-return/route.ts
-import { createSupabaseServerClient } from '../../../lib/supabase-server.ts'
+import { createSupabaseServerClient } from '../../../lib/supabase-server'
 import { NextResponse } from 'next/server'
 
 export async function POST(req: Request) {
